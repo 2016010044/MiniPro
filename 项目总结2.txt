@@ -1,0 +1,352 @@
+首页：
+1）首页中先来介绍轮播图，看到历史人物和名声古迹两个类似，就应该知道他们是用的一个组件。：
+<home-container title="历史人物">
+	<view class="freeLive">
+		<!-- next-margin="60rpx" -->
+		<swiper autoplay circular indicator-dots class="swiper" bindchange="_handlerChange">
+			<block>
+				<swiper-item wx:for="{{FirstPagePersonsImg.image}}" wx:key="index">
+					<view class="item">
+						<image src="{{item}}" class="fm"></image>
+					</view>
+				</swiper-item>
+			</block>
+		</swiper>
+	</view>
+	<view class="comments">
+		<view class="hot-comment">热门\n时评</view>
+		<view class="hot-comments">
+			<swiper class="swiper1" vertical circular autoplay>
+				<block wx:for="{{comments}}" wx:key="index">
+					<swiper-item>{{item.content}}</swiper-item>
+				</block>
+			</swiper>
+		</view>
+	</view>
+</home-container>
+home-container组件：使用组件前先要引入在json文件中引入，组件一般都放在component中，这儿可以看到给home-container组件传递了一个title，在home-container中的js文件的properties中接收这个参数， properties: {title:String},home-container组件内容如下：
+<view class="section">
+	<view class="title"><text>/</text>{{homeTool.handlerTitle(title)}}<text>/</text></view>
+	<slot />
+</view>
+<wxs module="homeTool">
+	function handlerTitle(str) {
+		return str.split("").join(" ");
+	}
+	module.exports = {
+		handlerTitle: handlerTitle
+	}
+</wxs>
+先来解析一下代码：这儿通过wxs来处理接收过来的title，wxs的用法要么外部引入，要么直接写在wxml中，先得有名字，<wxs module="homeTool">，接着得向外部暴露写在wxs中的函数或其他。这个slot就是要引用它的组件去实现，这里的slot就是<home-container></home-container>之间的东西。也就是说这个组件有标题（必须）和轮播图（非必须，也可以是其他，就是slot）。
+接着就是轮播图：FirstPagePersonsImg（在data中），这个东西是通过云函数请求得到的：写在onload中：
+ wx.cloud.callFunction({
+      name:"getFirstPagePer",
+      success:(res)=>{
+        // console.log(res.result)
+        this.setData({
+          FirstPagePersonsImg:res.result
+        })
+      }
+    })
+云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  let db=cloud.database()
+  let firstPer=db.collection("firstpage-per")
+  let result=await firstPer.where({
+    isShow:true
+  }).get().then(res=>{
+    if(res.data.length>0){
+      return res.data[0];
+    }else{
+      return {}
+    }
+  })
+  return result
+}
+云函数将数据库中的数据拿到返回。
+接着就是热门时评：这个是从网上爬的数据。
+ wx.cloud.callFunction({
+      name:"getComments",
+      data:{
+        sightId:38170
+      },
+      success:(res=>{
+        this.setData({
+          comments:res.result
+        })
+      }),
+      fail:(err=>{
+        console.log(err)
+      })
+    })
+云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+const rp=require('request-promise')
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+// 云函数入口函数
+exports.main = async (event, context) => {
+  // http://piao.qunar.com/ticket/detailLight/sightCommentList.json?sightId=38170&
+  // index=1&page=1&pageSize=10&tagType=0
+//  http://piao.qunar.com/ticket/detail_989946426.html?in_track=pc_dujia_search_poi
+  let sightId=event.sightId
+  var options = {
+    uri: ' http://piao.qunar.com/ticket/detailLight/sightCommentList.json',
+    qs: {
+      sightId:sightId,
+      index:1,
+      page:1,
+      pageSize:10,
+      tagType:0
+    },
+    headers: {
+        'referer': ' http://piao.qunar.com/ticket/detail_989946426.html?in_track=pc_dujia_search_poi'
+    },
+    json: true // Automatically parses the JSON string in the response
+};
+let result=await rp(options).then(res=>{
+  return res.data.commentList
+}).catch(err=>{
+  console.log(err)
+});
+return result
+}
+代码没什么难度，可能就是记不住，这儿还需要注意的是，在网络爬的时候通过ctrl+F来搜索需要的数据。需要一个url和refer。
+
+2)热门人物和景点：
+<home-container title='热门人物和景点'>
+	<view>
+		<block wx:for="{{hotPerAndView}}" wx:key='index'>
+			<hot-per itemM="{{item}}"></hot-per>
+		</block>
+	</view>
+	<load-more isLoading="{{isLoading}}" bindtap="_handlerTap"></load-more>
+</home-container>
+这儿用到一个组件hot-per，它就是一条条的那个景点。hotPerAndView存的就是当前页面有几个景点数据，然后遍历它，显示到页面。这儿在加载数据的时候：this._loadStageData(currentpage)，就根据currentpage加载几条数据，currentpage默认为1，这个方法的实现如下：
+ _loadStageData(pageNum=1,pageSize=1){
+    this.setData({
+      isLoading:true,
+    })
+    wx.cloud.callFunction({
+      name:'getHotPer',
+      data:{
+        pageSize,
+        pageNum
+      },
+      success:res=>{
+        currentpage++
+        this.setData({
+          hotPerAndView:this.data.hotPerAndView.concat(res.result)
+        })
+      },
+      complete:()=>{
+        this.setData({
+          isLoading:false
+        })
+      }
+    })
+  },
+云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  let pageSize=event.pageSize||1;
+  let pageNum=event.pageNum||1
+  let db=cloud.database();
+  let hotP=db.collection('hot_perandview')
+  let result=await hotP.orderBy('perNum','asc').skip((pageNum-1)*pageSize).limit(pageSize).get().
+  then(res=>{
+    return res.data
+  }).catch(err=>{
+    console.log(err)
+  })
+  return result
+}
+最终将通过限制将查出来的数据返回给调用处。调用处把拿到数据放到hotPerAndView中。然后遍历，接着把item给组件，子组件：
+<view class="stageCard">
+	<view class="num">{{itemM.perNum}}</view>
+	<view class="fm">
+		<image src="{{itemM.perImg}}" class="fm_img"></image>
+		<view class="mask" bindtap="_handlerOpen">{{isOpen ? "-" : "+"}}</view>
+	</view>
+	<view class="detail">
+		<view class="intro" hidden="{{isOpen}}">
+			<view class="title">{{itemM.perDesc.title_Intro}}</view>
+			<view class="item" wx:for="{{itemM.perDesc.content_Intro}}" wx:key="index">{{item}}</view>
+		</view>
+		<view class="classList" hidden="{{!isOpen}}">
+			<swiper class="course-list-swiper" previous-margin="50rpx" next-margin="50rpx">
+				<block wx:for="{{itemM.perChildren}}" wx:key="index">
+					<swiper-item>
+						<view class="course-item" bindtap="_handlerHref" data-jumpMini="">
+							<image src="{{item.perChildImg}}" class="course-img" mode="scaleFill" />
+							<view class="desc">
+								<text>建立时期：{{item.perAge}}</text>
+							</view>
+						</view>
+					</swiper-item>
+				</block>
+
+			</swiper>
+		</view>
+	</view>
+</view>
+这里的+-号通过isOpen控制，方法实现：
+ _handlerOpen(){
+      this.setData({
+        isOpen:!this.data.isOpen
+      })
+    }
+回到首页，还有一个组件就是加载数据，默认我们是一次加载一条数据的，但是每次运行只加载一次，这样造成其他数据展示不了。需要点击按钮使得currentpage++，然后查到第二条数据push到hotPerAndView展示到页面。 _handlerTap(){
+   this._loadStageData(currentpage)
+  },
+第一次加载后currentpage为2，接着触动这个方法，直接将currentpage传进去。就获取到第二条数据。load-more组件：
+<view class="load-more iconfont icon-shuaxin {{isLoading?'loading': ''}}" >
+{{isLoading?'正在加载...': '加载更多...'}}</view>需要接收一个其他页面传过来的isLoading
+
+3)关于：
+<home-container title="关于CCEP">
+	<view>
+		<view class="pay-hint-content {{ellipsis?'ellipsis':'unellipsis'}}">
+			<view class="title">全称即“Chinese Culture Exhibition Platform”,即中国文化展示平台。本平台
+				将会在两个大的方面向人们展示中国文化，即“历史人物”和“名胜古迹”。
+				历史人物方面，用户可以在历史人物板块中上传、分享，搜索查看、评论历史人物。
+				名胜古迹方面，用户可以在名胜古迹板块中上传、分享，搜索查看、评论名胜古迹。
+			</view>
+		</view>
+		<view bindtap='ellipsis'>
+			<image class='img-ellipsis' src="{{ellipsis?'/images/展开收起/down.png':'/images/展开收起/up.png'}}"></image>
+		</view>
+	</view>
+</home-container>
+
+ ellipsis(){
+    let value=!this.data.ellipsis;
+    this.setData({
+      ellipsis: value
+    }) 
+  },
+
+4）客服：
+<view class="kefu">
+	<button open-type="contact" class="contact">
+		<image src="/images/客服/xl.png" class="xl"></image>
+	</button>
+</view>
+
+2.个人中心：
+<view class="mine">
+  <view class="back" >
+    <open-data type="userAvatarUrl"/>
+  </view>
+  <view class="header">
+    <open-data type="userAvatarUrl"/>
+  </view>
+  <view class="nick-name">
+    <open-data type="userNickName" />
+  </view>
+  <view class="pane"></view>
+  <view class="menus">
+    <view class="cell iconfont icon-xiaochengxu" bindtap="_handlerIntro">
+         推荐小程序
+      <i class="iconfont icon-gengduo1 more"/>
+    </view>
+  </view>
+</view>
+这里的open-data type="userNickName" 的open-data用于展示微信开放的数据。
+ //推荐小程序
+  _handlerIntro(){
+    wx.cloud.callFunction({
+      name: "getIntroImage"
+    }).then(res=>{
+      console.log(res)
+      let codeFileID = res.result
+      wx.previewImage({
+        urls: [codeFileID]
+      })
+    })
+  },
+云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  try{
+    let result=await cloud.openapi.wxacode.getUnlimited({
+      scene:'CCEP',
+      width: 860,
+      autoColor: true
+    }).then(async res=>{
+      // console.log(res)
+      let buffer=res.buffer;
+      let result2=await cloud.uploadFile({
+        cloudPath: 'introMiniProject/intro.png', //仅为示例，非真实的接口地址
+        fileContent:buffer
+      }).then(res=>{
+        return res.fileID
+      })
+      return result2
+    })
+    return result
+  }catch(err){
+    return ''
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

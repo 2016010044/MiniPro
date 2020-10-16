@@ -1,0 +1,113 @@
+先来介绍一下tabbar:
+1）不使用自定义：
+直接在app.json中定义tabbar:
+"tabBar": {
+    "list": [
+      {
+      "pagePath": "pages/homePage/homePage",
+      "text": "首页",
+      "iconPath": "/images/tabber/firstPage.png",
+      "selectedIconPath":"/images/tabber/首页-选中 (2).png"
+    },
+    {
+      "pagePath": "pages/persons/persons",
+      "text": "历史人物",
+      "iconPath": "/images/tabber/人群管理.png",
+      "selectedIconPath":"/images/tabber/人群管理 (1).png"
+    },
+    
+    {
+      "pagePath": "pages/personalCenter/personalCenter",
+      "text": "个人中心",
+      "iconPath": "/images/tabber/个人中心 - 中.png",
+      "selectedIconPath": "/images/tabber/个人中心 - 中 (1).png"
+    }
+  ]
+  }
+2）使用自定义的tabbar：自定义tabbar的使用，首先正常的使用不是自定义的tabbar，接下来第一步就是在app.json中的tabbar的list前面加上"custom":true，这个时候就代表要使用自己的tabbar了，接下来弄一个文件夹和components平级，名字叫做custom-tab-bar，里面定义一个index的组件，
+<cover-view class="tab-bar">
+	<cover-view class="tab-border"> </cover-view>
+	<cover-view class="content-list">
+		<block wx:for="{{list}}" wx:key="pagePath">
+			<cover-view class="content-item" bindtap="_handlerTap" data-index="{{index}}">
+				<cover-image src="{{index===selected?item.selectedIconPath:item.iconPath}}" class="icon"></cover-image>
+				<cover-view class="desc" style="color:{{index===selected?selectedColor:color}}">{{item.text}}</cover-view>
+			</cover-view>
+		</block>
+	</cover-view>
+</cover-view>
+js中的data数据：
+ data: {
+    //全局的判断有没有被选中
+    selected:0,
+    color: "#707070",
+    selectedColor: "#d4237a",
+    "list": [
+      {
+      "pagePath": "/pages/homePage/homePage",
+      "text": "首页",
+      "iconPath": "/images/tabber/firstPage.png",
+      "selectedIconPath":"/images/tabber/首页-选中 (2).png"
+    },
+    {
+      "pagePath": "/pages/persons/persons",
+      "text": "历史人物",
+      "iconPath": "/images/tabber/人群管理.png",
+      "selectedIconPath":"/images/tabber/人群管理 (1).png"
+    },
+    {
+      "pagePath": "/pages/views/views",
+      "text": "名胜古迹",
+      "iconPath": "/images/tabber/风景.png",
+      "selectedIconPath": "/images/tabber/风景 (1).png"
+    },
+    {
+      "pagePath": "/pages/personalCenter/personalCenter",
+      "text": "个人中心",
+      "iconPath": "/images/tabber/个人中心 - 中.png",
+      "selectedIconPath": "/images/tabber/个人中心 - 中 (1).png"
+    }
+  ]
+
+  },
+前面几行代码就是定义选中和没选中的字体颜色，还有默认选中的。
+上面的方法实现如下：
+ _handlerTap:function(evt){
+      let index=evt.currentTarget.dataset.index;
+      this.setData({
+        selected:index
+      })
+      // console.log(evt)
+       // 切换tabbar 对应的页面，还要去对应页面的js中onShow配置
+       let pagePath = this.data.list[index].pagePath
+       wx.switchTab({
+         url: pagePath,
+       })
+    }
+  }
+这儿能拿到index,是因为在wxml中绑定了index：data-index="{{index}}
+最后注意的是在tabbar所用到的页面的js中的onShow方法中加上如下代码：
+ if (typeof this.getTabBar === "function" && this.getTabBar()) {
+      let tabBar = this.getTabBar()
+      console.log(tabBar)
+      tabBar.setData({
+        selected: 3
+      })
+    }
+selected：就是当前页面的索引。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

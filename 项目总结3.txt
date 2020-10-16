@@ -1,0 +1,858 @@
+历史人物和个人中心：
+1）<view class="persons">
+	<search-bar class="searchBar" bind:publish="_handlerPublish" bind:search="_handlerSearch" />
+	<author-pane isModal="{{isModal}}" bind:authorSuccess="_handlerAuthorSuccess" />
+	<block wx:for="{{perMessageList}}" wx:key="_id">
+		<question-cart perMessage="{{item}}" />
+		<question-bar perMessageID="{{item._id}}" />
+	</block>
+	<load-more isLoading="{{isLoading}}" wx:if="{{isShow}}"/> 
+</view>
+先来看看顶部是一个组件，search-bar：
+<!--components/searchBar/searchBar.wxml-->
+<view class="searchBar">
+  <view class="publish iconfont icon-edit" bindtap="_handlerPublish"></view>
+  <view class="searchContainer">
+    <input placeholder="请输入搜索的关键字" class="searchKey" bindinput="_handlerInput"></input>
+    <button class="serachBtn" bindtap="_handlerSearch">搜索</button>
+    <view class="searchIcon iconfont icon-search"></view>
+  </view>
+</view>
+这儿有三个方法：
+  _handlerPublish(){
+      this.triggerEvent("publish")
+    },
+    _handlerInput(evt){
+      value=evt.detail.value
+      // console.log(value)
+    },
+    _handlerSearch(){
+      this.triggerEvent("search",{
+        value
+      })
+    }
+通过 this.triggerEvent("publish")让调用者去实现这个方法。在调用者中bind:publish="_handlerPublish"当点击发布按钮的时候就触发_handlerPublish这个方法。
+  _handlerPublish(){
+    wx.getSetting({
+      success:(res=>{
+        console.log(res)
+        let result=res.authSetting['scope.userInfo']
+        if(result){
+         wx.getUserInfo({
+          success:(res)=>{
+            userInfo=res.userInfo
+            // console.log(userInfo)
+            //拿到用户信息接下来做处理
+            this._handlerUserInfo(userInfo)
+          }
+         })
+        }else{
+          this.setData({
+            isModal:true
+          })
+        }
+      })
+    })
+  },
+这儿先判断是否授权，如果已经授权，就拿到userInfo用户信息，执行如下方法：
+_handlerUserInfo(userInfo){
+    // console.log(userInfo)
+    wx.navigateTo({
+      url: '/pages/perPublish/perPublish',
+      success:(res=>{
+        // console.log('页面跳转成功')
+        //需要传递参数过去
+        res.eventChannel.emit('getUserInfoEvent',{userInfo})
+      })
+    })
+  },
+跳转到该页面，并将参数传递过去，
+如果没有授权，isModal为true，之前默认是false,这个isModal就是是否显示授权面板：<author-pane isModal="{{isModal}}" bind:authorSuccess="_handlerAuthorSuccess" />这个组件：
+<mp modalTitle="用户授权" isModal="{{isModal}}">
+  <view class="authorPane">
+      <image src="/images/客服/tishi.png" class="logo"></image>
+      <view class="desc">友情提示: 此操作需要获取您的个人头像以及昵称信息, 如需下一步请授权</view>
+      <button open-type="getUserInfo" bindgetuserinfo="_handlerUserInfor" type="primary" class="authorBtn">点击获取用户信息</button>
+  </view>
+</mp>
+这里需要mp这个组件，因为先得有一个架子，然后将author-pane的内容放到这个组件之间中，所以先定义了一个mp这个组件，然后调用它，往他里面添加东西。：
+<!--components/modalPane/modalPane.wxml-->
+<view class="modalPane" hidden="{{!isModal}}">
+  <view class="modalContainer">
+    <view class="top">
+      <text>{{modalTitle}}</text>
+      <i class="iconfont icon-close close" bind:tap="_handlerClose"/>
+    </view>
+    <view class="content">
+      <slot/>
+    </view>
+  </view>
+</view>
+  _handlerClose() {
+      this.setData({
+        isModal: false
+      })
+    }
+这儿要接收调用者传过来的两个参数： isModal: Boolean,modalTitle: String，现在架子有了，添加东西就是slot，即authorPane中的东西。这儿有个按钮：
+<button open-type="getUserInfo" bindgetuserinfo="_handlerUserInfor" type="primary" class="authorBtn">点击获取用户信息</button>
+这个按钮的open-type="getUserInfo"就是让按钮有获得用户信息的能力。接着通过方法拿到用户信息。
+_handlerUserInfor(evt){
+      // console.log(evt)
+      let userInfo=evt.detail.userInfo||{}   
+      if(userInfo.nickName!==undefined){
+        this.triggerEvent("authorSuccess",{
+          userInfo
+        })
+      }else{
+        wx.showToast({
+          image:'/images/客服/error.png',
+          title: '授权失败',
+        })
+      }
+    }
+将用户信息返回给调用者，调用者通过一个方法拿到用户信息。
+<author-pane isModal="{{isModal}}" bind:authorSuccess="_handlerAuthorSuccess" />
+_handlerAuthorSuccess(evt){
+  //  console.log("授权成功，已经获取到用户信息",evt.detail.userInfo)
+   this.setData({
+     isModal:false
+   })
+   this._handlerPublish(evt.detail.userInfo)
+  },
+同样拿到用户信息，跳转页面传递参数。
+
+2）授权成功后，跳转页面，需要在该页面接收传递过来的数据。需要在onload中：
+ let ec=this.getOpenerEventChannel()
+    ec.on&ec.on("getUserInfoEvent",res=>{
+      // console.log(res.userInfo)
+      this.setData({
+        userInfo:res.userInfo
+      })
+    })
+该页面数据：
+<view style="padding-bottom: 80rpx;">
+	<!-- 头像处理 -->
+	<view class="top">
+		<image class="background" src="{{userInfo.avatarUrl}}" mode="aspectFill" />
+		<image class="header" src="{{userInfo.avatarUrl}}" />
+		<text class="nickName">{{userInfo.nickName}}</text>
+	</view>
+	<!-- 问题描述 (maxLength就是限定输入字数)-->
+	<textarea maxlength="{{maxlength}}" placeholder="请输入相关的历史人物信息" class="questionDesc" bindinput="_handlerInput" bindfocus="_handlerFocus" bindblur="_handlerBlur"></textarea>
+	<view class="publishBar" style="bottom:{{publicBarToBottom}}">
+		<text class="leftWords">还剩{{leftWords}}字</text>
+		<button type="primary" class="publishBtn" bindtap="_handlerPublish" disabled="{{!canPublish}}">发布</button>
+	</view>
+	<view class="location iconfont icon-location" bindtap="_handlerLocation">
+		{{userLocation.name.length>0 ? userLocation.name : (userLocation.address.length > 0 ? userLocation.address: "点击获取用户地理位置...")}}
+		<i class="iconfont icon-gengduo more" />
+	</view>
+	<view class="imageList">
+	<block wx:for="{{chooseImg}}" wx:key="index">
+	<view class="imageWrap">
+			<image src="{{item}}" data-src="{{item}}" bindtap="_handlerPreviewImg" mode="aspectFill"></image>
+			<i data-index="{{index}}" class="iconfont icon-close close" bindtap="_handlerDeleteImg" />
+		</view>
+	</block>
+		
+		<view class="imageWrap" bindtap="_handlerChooseImage" hidden="{{chooseImg.length === 9}}">
+			<i class="iconfont icon-add" />
+		</view>
+	</view>
+</view>
+首先就是展示这个头像用户名，接着就是问题描述，问题描述这儿，有一个maxlength，随着用户的输入，maxlength也随之变化，_handlerInput(res){
+    // console.log(res.detail.value)
+    textContent=res.detail.value
+    len=res.detail.value.length;
+    this.setData({
+      leftWords:this.data.maxlength-len,
+      canPublish:res.detail.value.trim().length!==0
+    })
+    //此刻需要弹出键盘输入内容
+  },
+后面三个函数就是输入框获得焦点，失去焦点等接着就下面的按钮，canPublish决定它是否可点击。点击按钮就是发布了。发布前要做的事情：判断图片和内容的合法性。接着就是获取地理位置：
+  _handlerLocation(){
+    // console.log("获取位置信息")
+    wx.getSetting({
+      success:(res=>{
+        if(res.authSetting["scope.userLocation"]){
+          this._handlerUserLocation()
+        }else{
+          wx.authorize({
+            scope: 'scope.userLocation',
+            success:(res=>{
+              // console.log("授权成功")
+              this._handlerUserLocation()
+            }),
+            fail:(err=>{
+              // console.log("授权失败")
+              wx.showModal({
+                title:"打开设置界面？",
+                content:"当前没有授权，是否前往设置进行授权",
+                cancelColor: 'cancelColor',
+                success:(res=>{
+                  if(res.confirm){
+                    wx.openSetting({
+                      success:(res=>{
+                        if (res.authSetting['scope.userLocation']) {
+                          this._handlerUserLocation()
+                        }
+                      })
+                    })
+                  }
+                })
+              })
+            })
+          })
+        }
+      })
+    })
+  },
+  _handlerUserLocation(){
+    wx.chooseLocation({
+      latitude: this.data.userLocation.latitude,
+      longitude:this.data.userLocation.longitude,
+      success:(res=>{
+        // console.log(res)
+        delete res['errMsg']
+        this.setData({
+          userLocation:res
+        })
+      })
+    })
+    
+  },
+接着就是上传图片：
+ _handlerChooseImage(){
+    // console.log("上传图片")
+    wx.chooseImage({
+      success:(res=>{
+        this.setData({
+          chooseImg:this.data.chooseImg.concat(res.tempFilePaths)
+        })
+      }),
+      count: 9-this.data.chooseImg.length,
+    })
+  },
+  _handlerPreviewImg(evt){
+    // console.log('我是预览照片')
+    console.log(evt)
+    wx.previewImage({
+      urls: this.data.chooseImg,
+      current:evt.currentTarget.dataset.src
+    })
+  },
+  _handlerDeleteImg(evt){
+    // console.log('我是删除图片')
+    let index=evt.currentTarget.dataset.index
+    // console.log(index)
+    this.data.chooseImg.splice(index,1)
+    this.setData({
+      chooseImg:this.data.chooseImg
+    })
+  },
+接着就是点击检查内容的合法性。
+ _handlerPublish(){
+    let userInfo=this.data.userInfo;
+    let userLocation=this.data.userLocation;
+    let content=textContent
+    // console.log(content)
+    this._handlerCheckMsgContent(textContent,()=>{
+      this._handlerCheckImgContent((isSafe,fileIDs)=>{
+        if(isSafe){
+          wx.showLoading({
+            title: '正在发布...',
+          })
+          this._handlerPublishAllContent(userInfo,userLocation,textContent,fileIDs,deviceMsg)
+          //将数据全部存到数据库中
+        }else{
+          wx.showToast({
+            image:"/images/客服/error.png",
+            title: '图片内容存在违规'
+          })
+        }
+      })
+    })
+  },
+  //文本安全检测
+  _handlerCheckMsgContent(textContent,successCallBack){
+    wx.showLoading({
+      title: '文本检测中...',
+    })
+    wx.cloud.callFunction({
+      name:'perContentCheck',
+      data:{
+        textContent:textContent
+      },
+      success:(res=>{
+        wx.hideLoading();
+        let success=res.result.success
+        if(success){
+          successCallBack()
+        }else{
+          wx.showToast({
+            image:"/images/客服/error.png",
+            title: '文本内容存在违规'
+          })
+        }
+      }),
+      fail:(err=>{
+        console.log(err)
+      })
+    })
+  },
+  //图片检测
+  _handlerCheckImgContent(ImgsuccessCallBack){
+    if(this.data.chooseImg.length===0){
+      ImgsuccessCallBack(true,[])
+      return
+    }
+    wx.showLoading({
+      title: '图片检测中...',
+    })
+    let img=this.data.chooseImg
+    let promiseArr=[]
+    let imgPath,extName,urlName,promise;
+    for(let i=0;i<img.length;i++){
+      imgPath=img[i];
+      extName=/\.\w+$/.exec(imgPath)[0]
+      urlName='perImg/'+Date.now()+Math.random()*1000+extName
+      promise=wx.cloud.uploadFile({
+        filePath: imgPath,
+        cloudPath:urlName
+      })
+      promiseArr.push(promise)
+    }
+    Promise.all(promiseArr).then(res=>{
+      let fileIDs=res.map(v=>v.fileID)
+      // console.log(fileIDs)
+      wx.cloud.callFunction({
+        name:"perImgCheck",
+        data:{
+          fileIDs:fileIDs
+        },
+        success:(res=>{
+          wx.hideLoading()
+          ImgsuccessCallBack(res.result.success,fileIDs)
+          // console.log("成功回调",res)
+        }),
+        fail:(err=>{
+          wx.hideLoading()
+          // console.log(err)
+        })
+      })
+    }).catch(err=>{
+      wx.hideLoading()
+    })
+  },
+  _handlerPublishAllContent(userInfo,userLocation,textContent,fileIDs,deviceMsg){
+    // wx.hideLoading()
+    // console.log(userInfo,userLocation,textContent,fileIDs,deviceMsg)
+    let db=wx.cloud.database()
+    let perMessageC=db.collection('perMessage')
+    perMessageC.add({
+      data:{
+        userInfo,
+        userLocation,
+        perMessage:{
+          textContent,
+          fileIDs
+        },
+        deviceMsg,
+        createTime:db.serverDate()
+      }
+    }).then(res=>{
+      wx.hideLoading()
+      //返回到之前那个页面
+      wx.showToast({
+        title: '发布成功',
+        complete:()=>{
+          wx.navigateBack()
+        //接着需要拿到页面栈刷新
+        let pages=getCurrentPages();
+        let prePage=pages[pages.length-2];
+        prePage.onPullDownRefresh()
+        }
+      })
+    }).catch(err=>{
+      wx.hideLoading()
+      console.log('添加失败')
+    })
+  },
+文件检查云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  let textContent=event.textContent
+  let result=await cloud.openapi.security.msgSecCheck({
+    content:textContent
+  }).then(res=>{
+    return {success:1}
+  }).catch(err=>{
+    return {success:0}
+  })
+  return result
+}
+图片检查云函数：先将图片全部上传到云存储，拿到一个fileID，再把这个传给云函数。云函数从云存储下载检查，如果图片存在问题，再将云存储的照片删除掉。最终检查完把数据存到数据库中，返回到上一个页面。并且触发下拉刷新，这儿忘记说了，在获取位置的时候，要在app.json中配置：
+ "permission": {
+    "scope.userLocation": {
+      "desc": "你的位置信息将用于小程序位置接口的效果展示"
+    }
+  },
+返回上一页面刷新的时候，要在json中配置：  "enablePullDownRefresh": true，返回界面的onload:
+this.setData({
+      isLoading:true
+    })
+    wx.startPullDownRefresh()
+
+onPullDownRefresh: function () {
+    this._loadData(1,result=>{
+      // console.log(result)fa
+      wx.stopPullDownRefresh();
+      this.setData({
+        isLoading:false,
+        perMessageList:result.data
+      })
+    })
+  },
+ _loadData(pageNum=1,successCB){
+      currentPage=pageNum;
+      wx.cloud.callFunction({
+        name:'getPerMessage',
+        data:{
+          start:(pageNum-1)*pageSize,
+          count:pageSize,
+          key:key
+        },
+        success:(res=>{
+          console.log(res)
+          successCB(res.result)
+        })
+      })
+  },
+云函数：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  let start=event.start||0;
+  let count=event.count||5;
+  let key=event.key;
+  let db=cloud.database();
+  let perMessage=db.collection('perMessage')
+  let whereObj={}
+  if(key.trim().length>0){
+    whereObj={
+      "perMessage.textContent":db.RegExp({
+        "regexp":key,
+        options:"i"
+      })
+    }
+  }
+  let result=await perMessage.where(whereObj).skip(start).limit(count).orderBy('createTime','desc').get().then(res=>{
+    return res
+  }).catch(err=>{
+    return err
+  })
+  return result
+}
+这个方法给云函数传了一个key,这个key在搜索的时候用的到： _handlerSearch(evt){
+    // let value=evt.detail.value;
+    // console.log(value)
+    key=evt.detail.value;
+    wx.startPullDownRefresh()
+  },
+这儿加载数据是触底后发生数据加载：
+ onReachBottom: function () {
+    this.setData({
+      isLoading:true
+    })
+    currentPage++;
+    this._loadData(currentPage,result=>{
+      if(result.data.length===0){
+        currentPage--;
+      }
+      this.setData({
+        isLoading:true,
+        isShow:false,
+        perMessageList:this.data.perMessageList.concat(result.data)
+      })
+    })
+  },
+接下来就说一下每一个发布的东西，这儿有两个组件，questionCart：
+<view class="questionCard">
+	<view class="top">
+		<image class="headerImg" src="{{perMessage.userInfo.avatarUrl}}" />
+		<view class="otherMsg">
+			<view class="name">{{perMessage.userInfo.nickName}}</view>
+			<view class="time">
+				<text>{{timeTool.getShowTime(perMessage.createTime)}}</text>
+				<text decode>&nbsp;&nbsp;&nbsp;来自:{{perMessage.deviceMsg}}</text>
+			</view>
+		</view>
+	</view>
+
+	<view class="content" bind:tap="_handlerDetail">
+		<view class="text">{{perMessage.perMessage.textContent}}</view>
+		<view class="{{styleTool.getStyle(perMessage.perMessage.fileIDs.length)}}">
+			<block wx:for="{{perMessage.perMessage.fileIDs}}" wx:key="index">
+				<image mode="aspectFill" src="{{item}}" data-src="{{item}}" catch:tap="_handlerPreviewImage"/>
+			</block>
+		</view>
+	</view>
+	<view class="location iconfont icon-location" wx:if="{{perMessage.userLocation.name.length>0}}">
+  {{perMessage.userLocation.name}}</view>
+</view>
+<wxs module="timeTool" src="../../tool/timeFormat.wxs" />
+<wxs module="styleTool">
+  function getStyle(imageCount) {
+    switch(imageCount) {
+      case 1: 
+        return "style1"
+      case 2: 
+      case 4:
+        return "style24"
+      case 3:
+      case 5:
+      case 6:
+      case 7:
+      case 8:
+      case 9:
+        return "style356789"
+    }
+  }
+  module.exports = {
+    getStyle: getStyle
+  }
+</wxs>
+这儿格式化时间的wxs:
+function getFormatTime(date) {
+  console.log(date)
+  var dateV = getDate(date)
+  // 获取年月日  时分秒
+  var year = dateV.getFullYear()
+  var month = dateV.getMonth() + 1
+  month = month < 10 ? "0" + month: month
+  var day = dateV.getDate()
+  day = day < 10 ? "0" + day : day
+
+  var hour = dateV.getHours()
+  hour = hour < 10 ? "0" + hour : hour
+  var mini = dateV.getMinutes()
+  mini = mini < 10 ? "0" + mini : mini
+  var second = dateV.getSeconds()
+  second = second < 10 ? "0" + second : second
+
+  return [year, month, day].join("-") + " " + [hour, mini, second].join(":")
+}
+
+
+function getShowTime(date) {
+  var lastDate = getDate(date)
+  var nowDate = getDate()
+  var cha = nowDate.getTime() - lastDate.getTime()
+  var s_cha = parseInt(cha / 1000)
+  if (s_cha < 60) {
+    return s_cha + "秒之前"
+  }
+  if (s_cha < 60 * 60) {
+    return parseInt(s_cha / 60) + "分钟之前"
+  }
+  if (s_cha < 60 * 60 * 24) {
+    return parseInt(s_cha / 3600) + "小时之前"
+  }
+
+  var dateV = lastDate
+  // 获取年月日  时分秒
+  var year = dateV.getFullYear()
+  var month = dateV.getMonth() + 1
+  month = month < 10 ? "0" + month : month
+  var day = dateV.getDate()
+  day = day < 10 ? "0" + day : day
+
+  var hour = dateV.getHours()
+  hour = hour < 10 ? "0" + hour : hour
+  var mini = dateV.getMinutes()
+  mini = mini < 10 ? "0" + mini : mini
+  var second = dateV.getSeconds()
+  second = second < 10 ? "0" + second : second
+
+  return [year, month, day].join("-") + " " + [hour, mini, second].join(":")
+
+}
+
+
+module.exports = {
+  getFormatTime: getFormatTime,
+  getShowTime: getShowTime
+}
+
+点击文本内容到用户评论的页面：
+bind:tap="_handlerDetail"
+  _handlerDetail(){
+      let pages=getCurrentPages()
+      // console.log(pages)
+      let route=pages[pages.length-1]
+      // console.log(route)
+      if(route.route!=='pages/perMessageComments/perMessageComments'){
+        wx.navigateTo({
+          url: '/pages/perMessageComments/perMessageComments?messageId='+this.data.perMessage._id,
+        })
+      }
+    },
+    _handlerPreviewImage(evt){
+      // console.log(evt)
+      wx.previewImage({
+        urls: this.data.perMessage.perMessage.fileIDs,
+        current:evt.currentTarget.dataset.src
+      })
+    }
+后面这个方法是预览照片。跳转到perMessageComments页面，并且将当前内容id传过去。
+<per-comments perMessage="{{perMessage}}" class="perMessage" />
+<view class="commentPane">
+	<view class="top">评论列表</view>
+	<view class="commentList" wx:for="{{perComments}}" wx:key="_id">
+		<per-comment perComment="{{item}}" />
+	</view>
+</view>
+评论页面的perComments：
+_loadComments(pageNum=1){
+    wx.cloud.callFunction({
+      name:"getPerComments",
+      data:{
+        start:(pageNum-1)*pageSize,
+        count:pageSize,
+        messageId:this.data.messageId
+      }
+    }).then(res=>{
+      // console.log("数据评论",res)
+      this.setData({
+        perComments:res.result.data
+      })
+      wx.stopPullDownRefresh()
+    })
+  },
+  /**
+   * 生命周期函数--监听页面加载
+   */
+  onLoad: function (options) {
+    wx.startPullDownRefresh()
+    this.setData({
+      isLoading:true
+    })
+    // console.log(options.messageId)
+    this.setData({
+      messageId:options.messageId
+    })
+    let db=wx.cloud.database();
+    let messageC=db.collection('perMessage')
+
+    messageC.doc(options.messageId).get().then(res=>{
+      // console.log(res)
+      this.setData({
+        perMessage:res.data
+      })
+    }).catch(err=>{
+      // console.log(err)
+    })
+    currentPage=1
+    this._loadComments()
+  },
+云函数为：
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  traceUser: true,
+  env:"wxe069a05927d5e6d7"
+})
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  let messageId=event.messageId;
+  let start=event.start||0;
+  let count=event.count||5;
+  let db=cloud.database();
+  let getPerComments=db.collection("percomments");
+  let result=await getPerComments.where({
+    perMessageID:messageId
+  }).skip(start).limit(count).orderBy('createTime',"desc").get().then(res=>{
+    return res
+  }).catch(err=>{
+   return err
+  })
+  return result
+}
+接着是添加评论组件：
+<view class="questionBar" >
+	<view class="iconfont icon-answer" bindtap="_handlerAnswer">回答{{countTool.countFormat(answerCount)}}</view>
+	<button class="iconfont icon-share share-btn" open-type="share" data-perMessageID="{{perMessageID}}">分享</button>
+
+	<author-pane isModal="{{isModal}}" bind:authorSuccess="_handlerAuthorSuccess"/>
+	<answer-pane isModal="{{isAnswer}}" bind:publishAnswer="_handlerPublishAnswer"/>
+</view>
+
+<wxs module="countTool">
+	function countFormat(count) {
+		if (count === 0) {
+			return ''
+		}
+		if (count < 1000) {
+			return "(" + count + ")"
+		}
+		if (count < 10000) {
+			return "(" + parseFloat(count / 1000).toFixed(2) + "k)"
+		}
+		return "(" + parseFloat(count / 10000).toFixed(2) + "w)"
+	}
+	module.exports = {
+		countFormat: countFormat
+	}
+</wxs>
+用到两个组件，author-pane：这个之前讲过就是处理授权的，answer-pane：
+<modal-pane isModal="{{isModal}}" modalTitle="我要评论">
+  <view>
+     <form bindsubmit="_handlerSubmit">
+        <textarea name="content" class="content" placeholder="请输入回答内容..."/>
+        <button form-type="submit" type="primary" class="commitComments">提交评论</button>
+     </form>
+  </view>
+</modal-pane>
+
+_handlerSubmit(evt) {
+      let content = evt.detail.value.content.trim()
+      if(content.length === 0) {
+        wx.showModal({
+          title: '友情提示',
+          content: '不能发布空的内容, 请输入数据后发布'
+        })
+      } else {
+        this.triggerEvent("publishAnswer", {
+          content
+        })
+      }
+    }
+接着调用者实现这个方法将评论插入到数据库中：
+ _checkContent(content,successCallBack){
+      wx.showLoading({
+        title: '文本检测中...',
+      })
+      wx.cloud.callFunction({
+        name:'perContentCheck',
+        data:{
+          textContent:content
+        },
+        success:(res=>{
+          wx.hideLoading();
+          let success=res.result.success
+          if(success){
+            successCallBack()
+          }else{
+            wx.showToast({
+              image:"/images/客服/error.png",
+              title: '文本内容存在违规'
+            })
+          }
+        }),
+        fail:(err=>{
+          console.log(err)
+        })
+      })
+   },
+    _handlerPublishAnswer(evt){
+      let content=evt.detail.content
+      this._checkContent(content,()=>{
+        comments.add({
+          data:{
+            userInfo:g_userInfo,
+            content:content,
+            createTime:db.serverDate(),
+            perMessageID:this.data.perMessageID
+          }
+        }).then(res=>{
+          this.triggerEvent("answerSuccessEvent")
+          wx.showToast({
+            title: '评论成功',
+          }),
+          this.setData({
+            isAnswer:false,
+            perMessageID:this.data.perMessageID
+          })
+         
+        })
+      })
+    }
+  },
+插入到数据库成功的话，返回给调用者一个方法，在questionBar中  observers:{
+    "perMessageID":function(v){
+      comments.where({
+        perMessageID:v
+      }).count().then(res=>{
+        // console.log(res.total)
+        this.setData({
+          answerCount:res.total
+        })
+      })
+    }
+  },来处理数量。
+
+最后就是分享：
+<button class="iconfont icon-share share-btn" open-type="share" data-perMessageID="{{perMessageID}}">分享</button>
+  onShareAppMessage: function (evt) {
+    // console.log("用户点击了分享",evt)
+    if(evt.target){
+      let permessageid=evt.target.dataset.permessageid
+      let result=this.data.perMessageList.filter(v=>v._id===permessageid)[0]
+      // console.log(result)
+      return{
+        title:result.perMessage.textContent,
+        path: "/pages/perMessageComments/perMessageComments?permessageid="+permessageid,
+        imageUrl:result.perMessage.fileIDs[0]
+      }
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
